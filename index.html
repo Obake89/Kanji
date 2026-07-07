@@ -336,7 +336,7 @@
 
         // --- KONFIGURACJA ---
         // Możesz wkleić tutaj bezpośrednio swój URL wdrożenia Google Apps Script:
-        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzIazyUXkg86J2yRPz1tiKF2iS1zHI3sDg8Mk5HOb5MwvJbfYoAnh-WPbCR6AxIpREHrA/exec';
+        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcxQdnV1bI7WHI6do1wvax8PKUN0OuyBlp7_4AslnCPw4-gBFARY5mwC9lZK9jTlJ-NQ/exec';
 
         let currentKanji = '';
 
@@ -353,7 +353,7 @@
         }
 
         // Actions
-        function performSearch() {
+        async function performSearch() {
             const query = kanjiInput.value.trim();
             if (!query) {
                 alert('Wpisz najpierw symbol Kanji.');
@@ -363,9 +363,45 @@
             currentKanji = query;
             kanjiLabel.textContent = query;
             kanjiText.textContent = query;
-            
-            // Otwórz WaniKani w nowej karcie/oknie przeglądarki
-            const targetUrl = `https://www.wanikani.com/kanji/${encodeURIComponent(query)}`;
+            commentText.value = ''; // Wyczyszczenie pola komentarza przed nowym wyszukiwaniem
+
+            const scriptUrl = getScriptUrl();
+            if (!scriptUrl) {
+                // Jeśli brak skonfigurowanego URL, od razu otwieramy WaniKani
+                openWaniKani(query);
+                return;
+            }
+
+            searchBtn.disabled = true;
+            searchBtn.textContent = '🔍 Szukanie w bazie...';
+
+            try {
+                // Zapytanie GET do Google Apps Script
+                const url = scriptUrl + '?kanji=' + encodeURIComponent(query);
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data && data.found) {
+                    commentText.value = data.comment || '';
+                    showToast('Znaleziono notatkę w bazie!');
+                } else {
+                    // Nie znaleziono w bazie, otwieramy WaniKani w nowej karcie
+                    showToast('Brak w bazie. Otwieram WaniKani...');
+                    openWaniKani(query);
+                }
+            } catch (err) {
+                console.error(err);
+                // W przypadku błędu (np. brak sieci, CORS we wdrożeniu testowym) otwieramy WaniKani
+                showToast('Błąd bazy. Otwieram WaniKani...');
+                openWaniKani(query);
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.textContent = '🔍 Szukaj w WaniKani';
+            }
+        }
+
+        function openWaniKani(kanji) {
+            const targetUrl = `https://www.wanikani.com/kanji/${encodeURIComponent(kanji)}`;
             window.open(targetUrl, '_blank');
         }
 
@@ -395,11 +431,11 @@
             submitCommentBtn.textContent = 'Zapisywanie...';
 
             try {
-                await fetch(scriptUrl, {
+                // Wysyłamy POST. Apps Script zaktualizuje wiersz, jeśli Kanji już istnieje, lub doda nowy.
+                const response = await fetch(scriptUrl, {
                     method: 'POST',
-                    mode: 'no-cors',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'text/plain' // Używamy text/plain by uniknąć problemów CORS preflight
                     },
                     body: JSON.stringify({
                         kanji: activeKanji,
@@ -407,8 +443,18 @@
                     })
                 });
 
-                showToast();
-                commentText.value = '';
+                // Sprawdzamy odpowiedź jeśli serwer ją zwrócił (przy cors)
+                let message = 'Zapisano w Google Sheets!';
+                try {
+                    const resData = await response.json();
+                    if (resData && resData.message) {
+                        message = resData.message;
+                    }
+                } catch (e) {
+                    // ignore if no-cors or response not readable
+                }
+
+                showToast(message);
             } catch (err) {
                 alert('Wystąpił błąd podczas wysyłania: ' + err.message);
             } finally {
@@ -433,7 +479,12 @@
             alert('Zapisano URL skryptu.');
         });
 
-        function showToast() {
+        function showToast(message) {
+            if (message) {
+                toast.textContent = message;
+            } else {
+                toast.textContent = "Komentarz zapisany w arkuszu!";
+            }
             toast.classList.add('show');
             setTimeout(() => {
                 toast.classList.remove('show');
