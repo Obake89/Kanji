@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaniKani Kanji Overlay & Sheets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-color: #f8fafc;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --success-color: #34d399;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-input {
+            flex-grow: 1;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            background: var(--accent-color);
+            color: #0f172a;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-comment {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-comment:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-settings {
+            background: transparent;
+            color: var(--text-color);
+            padding: 8px;
+            font-size: 20px;
+        }
+
+        /* Settings and comment overlays */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            padding: 20px;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .modal-body label {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        .modal-body input, .modal-body textarea {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .modal-body textarea {
+            resize: none;
+            height: 100px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Content area */
+        .content-frame-container {
+            flex-grow: 1;
+            position: relative;
+            background: #111827;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+
+        .fallback-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            padding: 20px;
+            text-align: center;
+            z-index: 1;
+        }
+
+        .fallback-container p {
+            margin-bottom: 16px;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            z-index: 200;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="controls-row">
+            <input type="text" id="kanjiInput" class="search-input" placeholder="Wklej Kanji (np. 水)..." autocomplete="off" autofocus>
+            <button id="searchBtn">Szukaj</button>
+            <button id="commentBtn" class="btn-comment">💬 Komentarz</button>
+            <button id="settingsBtn" class="btn-settings">⚙️</button>
+        </div>
+    </header>
+
+    <div class="content-frame-container">
+        <!-- If WaniKani blocks iframe loading, the user will see a prompt or can use fallback -->
+        <div id="fallbackPrompt" class="fallback-container">
+            <p>Wpisz symbol Kanji na górze i kliknij "Szukaj".</p>
+            <p>W razie zablokowania ramki przez przeglądarkę, możesz otworzyć stronę bezpośrednio:</p>
+            <button id="openExternalBtn" class="btn-comment">Otwórz w nowej karcie</button>
+        </div>
+        <iframe id="kanjiFrame" class="hidden"></iframe>
+    </div>
+
+    <!-- Comment Modal -->
+    <div id="commentOverlay" class="overlay">
+        <div class="modal">
+            <div class="modal-title">Dodaj komentarz do: <span id="targetKanjiSpan" style="color: var(--accent-color);"></span></div>
+            <div class="modal-body">
+                <label for="commentText">Twój komentarz:</label>
+                <textarea id="commentText" placeholder="Wpisz notatki lub komentarz..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-comment" id="closeCommentBtn">Anuluj</button>
+                <button id="submitCommentBtn">Zapisz do Sheets</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsOverlay" class="overlay">
+        <div class="modal">
+            <div class="modal-title">Ustawienia Google Sheets</div>
+            <div class="modal-body">
+                <label for="scriptUrlInput">URL wdrożenia Google Apps Script Web App:</label>
+                <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-comment" id="closeSettingsBtn">Anuluj</button>
+                <button id="saveSettingsBtn">Zapisz</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Zapisano pomyślnie!</div>
+
+    <script>
+        const kanjiInput = document.getElementById('kanjiInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const commentBtn = document.getElementById('commentBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+        
+        const kanjiFrame = document.getElementById('kanjiFrame');
+        const fallbackPrompt = document.getElementById('fallbackPrompt');
+        const openExternalBtn = document.getElementById('openExternalBtn');
+
+        const commentOverlay = document.getElementById('commentOverlay');
+        const targetKanjiSpan = document.getElementById('targetKanjiSpan');
+        const commentText = document.getElementById('commentText');
+        const closeCommentBtn = document.getElementById('closeCommentBtn');
+        const submitCommentBtn = document.getElementById('submitCommentBtn');
+
+        const settingsOverlay = document.getElementById('settingsOverlay');
+        const scriptUrlInput = document.getElementById('scriptUrlInput');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        const toast = document.getElementById('toast');
+
+        let currentKanji = '';
+
+        // Load Settings
+        scriptUrlInput.value = localStorage.getItem('gas_script_url') || '';
+
+        function getScriptUrl() {
+            return localStorage.getItem('gas_script_url');
+        }
+
+        // Actions
+        function performSearch() {
+            const query = kanjiInput.value.trim();
+            if (!query) return;
+            
+            currentKanji = query;
+            const targetUrl = `https://www.wanikani.com/kanji/${encodeURIComponent(query)}`;
+            
+            kanjiFrame.src = targetUrl;
+            kanjiFrame.classList.remove('hidden');
+            fallbackPrompt.classList.add('hidden');
+        }
+
+        searchBtn.addEventListener('click', performSearch);
+        kanjiInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+
+        openExternalBtn.addEventListener('click', () => {
+            const query = kanjiInput.value.trim() || currentKanji;
+            if (query) {
+                window.open(`https://www.wanikani.com/kanji/${encodeURIComponent(query)}`, '_blank');
+            }
+        });
+
+        // Comment Overlay
+        commentBtn.addEventListener('click', () => {
+            const query = kanjiInput.value.trim() || currentKanji;
+            if (!query) {
+                alert('Proszę najpierw wpisać lub wyszukać symbol Kanji.');
+                return;
+            }
+            currentKanji = query;
+            targetKanjiSpan.textContent = currentKanji;
+            commentText.value = '';
+            commentOverlay.classList.add('active');
+        });
+
+        closeCommentBtn.addEventListener('click', () => {
+            commentOverlay.classList.remove('active');
+        });
+
+        submitCommentBtn.addEventListener('click', async () => {
+            const scriptUrl = getScriptUrl();
+            if (!scriptUrl) {
+                alert('Proszę najpierw skonfigurować URL skryptu Google Sheets (kliknij ikonę zębatki).');
+                return;
+            }
+
+            const comment = commentText.value.trim();
+            submitCommentBtn.disabled = true;
+            submitCommentBtn.textContent = 'Wysyłanie...';
+
+            try {
+                // Post using standard fetch. We send as form-data or JSON. Apps script handles standard posts best with URLencoded or plain text.
+                const response = await fetch(scriptUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // standard workaround for GAS redirect CORS issues
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        kanji: currentKanji,
+                        comment: comment
+                    })
+                });
+
+                showToast();
+                commentOverlay.classList.remove('active');
+            } catch (err) {
+                alert('Wystąpił błąd podczas wysyłania: ' + err.message);
+            } finally {
+                submitCommentBtn.disabled = false;
+                submitCommentBtn.textContent = 'Zapisz do Sheets';
+            }
+        });
+
+        // Settings Overlay
+        settingsBtn.addEventListener('click', () => {
+            scriptUrlInput.value = localStorage.getItem('gas_script_url') || '';
+            settingsOverlay.classList.add('active');
+        });
+
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsOverlay.classList.remove('active');
+        });
+
+        saveSettingsBtn.addEventListener('click', () => {
+            localStorage.setItem('gas_script_url', scriptUrlInput.value.trim());
+            settingsOverlay.classList.remove('active');
+            alert('Zapisano URL skryptu.');
+        });
+
+        function showToast() {
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
