@@ -325,13 +325,22 @@
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         const toast = document.getElementById('toast');
 
+        // --- KONFIGURACJA ---
+        // Możesz wkleić tutaj bezpośrednio swój URL wdrożenia Google Apps Script:
+        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzIazyUXkg86J2yRPz1tiKF2iS1zHI3sDg8Mk5HOb5MwvJbfYoAnh-WPbCR6AxIpREHrA/exec';
+
         let currentKanji = '';
 
         // Load Settings
-        scriptUrlInput.value = localStorage.getItem('gas_script_url') || '';
+        scriptUrlInput.value = localStorage.getItem('gas_script_url') || (DEFAULT_SCRIPT_URL !== 'TUTAJ_WKLEJ_SWOJ_URL_WDROZENIA' ? DEFAULT_SCRIPT_URL : '');
 
         function getScriptUrl() {
-            return localStorage.getItem('gas_script_url');
+            const localUrl = localStorage.getItem('gas_script_url');
+            if (localUrl) return localUrl;
+            if (DEFAULT_SCRIPT_URL && DEFAULT_SCRIPT_URL !== 'TUTAJ_WKLEJ_SWOJ_URL_WDROZENIA') {
+                return DEFAULT_SCRIPT_URL;
+            }
+            return '';
         }
 
         // Actions
