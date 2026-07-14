@@ -363,7 +363,7 @@
         <div class="modal">
             <div class="modal-title">Ustawienia Google Sheets</div>
             <div class="modal-body">
-                <label for="scriptUrlInput">https://script.google.com/macros/s/AKfycbwQSdPgdIhHCo-TwaOTkB__D1Ck-7f_tWCaKphaWwdqDxbs0lMDDYK6humA8nxzl_aLdA/exec</label>
+                <label for="scriptUrlInput">https://script.google.com/macros/s/AKfycbyIFKO8QSCK69kOJnyyM-iLfKx4Bc70bjZVvaRPrrKXsfSRBt6L_4jpIVifIuZJ8c_jHw/exec</label>
                 <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
             </div>
             <div class="modal-actions">
@@ -430,7 +430,7 @@
 
         // --- KONFIGURACJA ---
         // Możesz wkleić tutaj bezpośrednio swój URL wdrożenia Google Apps Script:
-        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzcxQdnV1bI7WHI6do1wvax8PKUN0OuyBlp7_4AslnCPw4-gBFARY5mwC9lZK9jTlJ-NQ/exec';
+        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyIFKO8QSCK69kOJnyyM-iLfKx4Bc70bjZVvaRPrrKXsfSRBt6L_4jpIVifIuZJ8c_jHw/exec';
 
         let currentKanji = '';
 
@@ -634,7 +634,8 @@
                         });
                     }
                 } else {
-                    dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Nie udało się pobrać danych z bazy.</td></tr>';
+                    const errMsg = (result && result.message) ? result.message : 'Nieznany błąd. Upewnij się, że nowa wersja skryptu została wdrożona (sklonowana/zaktualizowana) jako Web App w Google Sheets.';
+                    dbTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Nie udało się pobrać danych z bazy.<br><span style="font-size: 12px; color: #94a3b8;">Powód: ${errMsg}</span></td></tr>`;
                 }
             } catch (err) {
                 console.error(err);
