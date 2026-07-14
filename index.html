@@ -265,6 +265,50 @@
         .toast.show {
             opacity: 1;
         }
+
+        .combination-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+
+        .combination-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-color);
+            background: rgba(15, 23, 42, 0.4);
+            font-size: 15px;
+            text-align: left;
+        }
+
+        .combination-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .combination-table tr:hover td {
+            background: rgba(15, 23, 42, 0.6);
+        }
+
+        .db-table th, .db-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .db-table th {
+            background: #1e293b;
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .db-table tr:hover td {
+            background: rgba(255, 255, 255, 0.05);
+        }
     </style>
 </head>
 <body>
@@ -272,7 +316,10 @@
     <div class="container">
         <header>
             <h1>Kanji WaniKani Overlay</h1>
-            <button id="settingsBtn" class="btn-settings" aria-label="Ustawienia">⚙️</button>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button id="dbBtn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-color); color: var(--text-color); padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; width: auto; cursor: pointer; display: flex; align-items: center; gap: 4px;">🗂️ Baza</button>
+                <button id="settingsBtn" class="btn-settings" aria-label="Ustawienia">⚙️</button>
+            </div>
         </header>
 
         <!-- Karta 1: Wyszukiwanie -->
@@ -299,6 +346,16 @@
             </div>
             <button id="submitCommentBtn">💾 Zapisz do Google Sheets</button>
         </div>
+        
+        <!-- Tabela: Kombinacja -->
+        <div class="card" id="combinationCard" style="display: none;">
+            <div class="card-title">Kombinacja</div>
+            <table class="combination-table">
+                <tbody id="combinationTableBody">
+                    <!-- Wiersze generowane dynamicznie -->
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Ustawienia Modal -->
@@ -316,22 +373,59 @@
         </div>
     </div>
 
+    <!-- Baza Modal -->
+    <div id="dbOverlay" class="overlay">
+        <div class="modal" style="max-width: 90%; width: 850px; max-height: 85vh; display: flex; flex-direction: column; padding: 20px;">
+            <div class="modal-title" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <span>Baza danych Kanji</span>
+                <button class="btn-settings" id="closeDbBtn" style="font-size: 18px; padding: 0;">❌</button>
+            </div>
+            <div style="overflow-x: auto; overflow-y: auto; flex: 1; margin-bottom: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
+                <table class="db-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+                    <thead>
+                        <tr style="background: rgba(15, 23, 42, 0.9); border-bottom: 2px solid var(--border-color); position: sticky; top: 0; z-index: 10;">
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">Kanji</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">Komentarz</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">D</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">E</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">F</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">G</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">H</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left;">I</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dbTableBody">
+                        <!-- Generowane dynamicznie -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast">Komentarz zapisany w arkuszu!</div>
 
     <script>
         const kanjiInput = document.getElementById('kanjiInput');
         const searchBtn = document.getElementById('searchBtn');
         const settingsBtn = document.getElementById('settingsBtn');
+        const dbBtn = document.getElementById('dbBtn');
         
         const kanjiLabel = document.getElementById('kanjiLabel');
         const kanjiText = document.getElementById('kanjiText');
         const commentText = document.getElementById('commentText');
         const submitCommentBtn = document.getElementById('submitCommentBtn');
-
+        const combinationCard = document.getElementById('combinationCard');
+        const combinationTableBody = document.getElementById('combinationTableBody');
+ 
         const settingsOverlay = document.getElementById('settingsOverlay');
         const scriptUrlInput = document.getElementById('scriptUrlInput');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        
+        const dbOverlay = document.getElementById('dbOverlay');
+        const closeDbBtn = document.getElementById('closeDbBtn');
+        const dbTableBody = document.getElementById('dbTableBody');
+        
         const toast = document.getElementById('toast');
 
         // --- KONFIGURACJA ---
@@ -364,6 +458,10 @@
             kanjiLabel.textContent = query;
             kanjiText.textContent = query;
             commentText.value = ''; // Wyczyszczenie pola komentarza przed nowym wyszukiwaniem
+            
+            // Czyszczenie tabeli kombinacji
+            combinationCard.style.display = 'none';
+            combinationTableBody.innerHTML = '';
 
             const scriptUrl = getScriptUrl();
             if (!scriptUrl) {
@@ -384,9 +482,34 @@
                 if (data && data.found) {
                     commentText.value = data.comment || '';
                     showToast('Znaleziono notatkę w bazie!');
+                    
+                    // Renderowanie tabeli kombinacji z kolumn D-I (data.extra)
+                    if (data.extra && Array.isArray(data.extra)) {
+                        let hasData = false;
+                        data.extra.forEach(val => {
+                            if (val && val.trim() !== '') {
+                                const tr = document.createElement('tr');
+                                const td = document.createElement('td');
+                                td.textContent = val.trim();
+                                tr.appendChild(td);
+                                combinationTableBody.appendChild(tr);
+                                hasData = true;
+                            }
+                        });
+                        if (hasData) {
+                            combinationCard.style.display = 'block';
+                        }
+                    }
                 } else {
-                    // Nie znaleziono w bazie, otwieramy WaniKani w nowej karcie
-                    showToast('Brak w bazie. Otwieram WaniKani...');
+                    // Nie znaleziono w bazie. Zapisujemy automatycznie do bazy i otwieramy WaniKani
+                    showToast('Brak w bazie. Dodawanie...');
+                    try {
+                        await saveKanji(query, '');
+                        showToast('Dodano Kanji do bazy. Otwieram WaniKani...');
+                    } catch (saveErr) {
+                        console.error('Błąd podczas autozapisu:', saveErr);
+                        showToast('Błąd autozapisu. Otwieram WaniKani...');
+                    }
                     openWaniKani(query);
                 }
             } catch (err) {
@@ -412,14 +535,34 @@
             }
         });
 
-        // Submit Comment
-        submitCommentBtn.addEventListener('click', async () => {
+        // Helper to save Kanji to Google Sheets
+        async function saveKanji(kanji, comment) {
             const scriptUrl = getScriptUrl();
             if (!scriptUrl) {
-                alert('Proszę najpierw skonfigurować URL skryptu Google Sheets (kliknij ikonę zębatki w prawym górnym rogu).');
-                return;
+                throw new Error('Brak skonfigurowanego URL skryptu.');
             }
 
+            const response = await fetch(scriptUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain' // Używamy text/plain by uniknąć problemów CORS preflight
+                },
+                body: JSON.stringify({
+                    kanji: kanji,
+                    comment: comment
+                })
+            });
+
+            try {
+                const resData = await response.json();
+                return resData;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Submit Comment
+        submitCommentBtn.addEventListener('click', async () => {
             const activeKanji = currentKanji || kanjiInput.value.trim();
             if (!activeKanji) {
                 alert('Najpierw wpisz i wyszukaj symbol Kanji.');
@@ -431,29 +574,11 @@
             submitCommentBtn.textContent = 'Zapisywanie...';
 
             try {
-                // Wysyłamy POST. Apps Script zaktualizuje wiersz, jeśli Kanji już istnieje, lub doda nowy.
-                const response = await fetch(scriptUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain' // Używamy text/plain by uniknąć problemów CORS preflight
-                    },
-                    body: JSON.stringify({
-                        kanji: activeKanji,
-                        comment: comment
-                    })
-                });
-
-                // Sprawdzamy odpowiedź jeśli serwer ją zwrócił (przy cors)
+                const resData = await saveKanji(activeKanji, comment);
                 let message = 'Zapisano w Google Sheets!';
-                try {
-                    const resData = await response.json();
-                    if (resData && resData.message) {
-                        message = resData.message;
-                    }
-                } catch (e) {
-                    // ignore if no-cors or response not readable
+                if (resData && resData.message) {
+                    message = resData.message;
                 }
-
                 showToast(message);
             } catch (err) {
                 alert('Wystąpił błąd podczas wysyłania: ' + err.message);
@@ -461,6 +586,67 @@
                 submitCommentBtn.disabled = false;
                 submitCommentBtn.textContent = '💾 Zapisz do Google Sheets';
             }
+        });
+
+        // Baza Overlay
+        dbBtn.addEventListener('click', async () => {
+            const scriptUrl = getScriptUrl();
+            if (!scriptUrl) {
+                alert('Proszę najpierw skonfigurować URL skryptu Google Sheets (kliknij ikonę zębatki w prawym górnym rogu).');
+                return;
+            }
+
+            dbBtn.disabled = true;
+            dbBtn.textContent = '⏳ Pobieranie...';
+            dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">Ładowanie danych z bazy...</td></tr>';
+            dbOverlay.classList.add('active');
+
+            try {
+                const response = await fetch(scriptUrl + '?action=all');
+                const result = await response.json();
+
+                if (result && result.status === 'success' && Array.isArray(result.data)) {
+                    dbTableBody.innerHTML = '';
+                    if (result.data.length === 0) {
+                        dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">Baza danych jest pusta.</td></tr>';
+                    } else {
+                        result.data.forEach(item => {
+                            const tr = document.createElement('tr');
+                            
+                            const tdKanji = document.createElement('td');
+                            tdKanji.textContent = item.kanji;
+                            tdKanji.style.fontWeight = 'bold';
+                            tdKanji.style.color = 'var(--accent-color)';
+                            tr.appendChild(tdKanji);
+
+                            const tdComment = document.createElement('td');
+                            tdComment.textContent = item.comment || '';
+                            tr.appendChild(tdComment);
+
+                            // Kolumny D-I
+                            for (let i = 0; i < 6; i++) {
+                                const tdExtra = document.createElement('td');
+                                tdExtra.textContent = (item.extra && item.extra[i]) ? item.extra[i] : '';
+                                tr.appendChild(tdExtra);
+                            }
+
+                            dbTableBody.appendChild(tr);
+                        });
+                    }
+                } else {
+                    dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Nie udało się pobrać danych z bazy.</td></tr>';
+                }
+            } catch (err) {
+                console.error(err);
+                dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Błąd połączenia: ' + err.message + '</td></tr>';
+            } finally {
+                dbBtn.disabled = false;
+                dbBtn.textContent = '🗂️ Baza';
+            }
+        });
+
+        closeDbBtn.addEventListener('click', () => {
+            dbOverlay.classList.remove('active');
         });
 
         // Settings Overlay
