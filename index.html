@@ -331,31 +331,8 @@
             <button id="searchBtn">🔍 Szukaj w WaniKani</button>
         </div>
 
-        <!-- Karta 2: Komentarz -->
-        <div class="card">
-            <div class="card-title">2. Dodaj komentarz</div>
-            <div class="kanji-display-row">
-                <div class="kanji-large" id="kanjiLabel">-</div>
-                <div class="kanji-info">
-                    Zatwierdzony symbol: <strong id="kanjiText">-</strong><br>
-                    <span style="color: #64748b;">Wpisz notatkę poniżej.</span>
-                </div>
-            </div>
-            <div class="input-group">
-                <textarea id="commentText" placeholder="Wpisz komentarz dla tego Kanji..."></textarea>
-            </div>
-            <button id="submitCommentBtn">💾 Zapisz do Google Sheets</button>
-        </div>
-        
-        <!-- Tabela: Kombinacja -->
-        <div class="card" id="combinationCard" style="display: none;">
-            <div class="card-title">Kombinacja</div>
-            <table class="combination-table">
-                <tbody id="combinationTableBody">
-                    <!-- Wiersze generowane dynamicznie -->
-                </tbody>
-            </table>
-        </div>
+        <!-- Kontener na wyniki wyszukiwania (dynamiczne karty) -->
+        <div id="resultsContainer"></div>
     </div>
 
     <!-- Ustawienia Modal -->
@@ -377,7 +354,10 @@
     <div id="dbOverlay" class="overlay">
         <div class="modal" style="max-width: 90%; width: 850px; max-height: 85vh; display: flex; flex-direction: column; padding: 20px;">
             <div class="modal-title" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-                <span>Baza danych Kanji</span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span>Baza danych Kanji</span>
+                    <button id="refreshDbBtn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid var(--border-color); color: var(--text-color); padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; width: auto; font-weight: normal; display: flex; align-items: center; gap: 4px;">🔄 Odśwież</button>
+                </div>
                 <button class="btn-settings" id="closeDbBtn" style="font-size: 18px; padding: 0;">❌</button>
             </div>
             <div style="overflow-x: auto; overflow-y: auto; flex: 1; margin-bottom: 16px; border-radius: 8px; border: 1px solid var(--border-color);">
@@ -392,6 +372,7 @@
                             <th style="padding: 10px; font-weight: 600; text-align: left;">G</th>
                             <th style="padding: 10px; font-weight: 600; text-align: left;">H</th>
                             <th style="padding: 10px; font-weight: 600; text-align: left;">I</th>
+                            <th style="padding: 10px; font-weight: 600; text-align: left; min-width: 140px;">Akcje</th>
                         </tr>
                     </thead>
                     <tbody id="dbTableBody">
@@ -410,12 +391,7 @@
         const settingsBtn = document.getElementById('settingsBtn');
         const dbBtn = document.getElementById('dbBtn');
         
-        const kanjiLabel = document.getElementById('kanjiLabel');
-        const kanjiText = document.getElementById('kanjiText');
-        const commentText = document.getElementById('commentText');
-        const submitCommentBtn = document.getElementById('submitCommentBtn');
-        const combinationCard = document.getElementById('combinationCard');
-        const combinationTableBody = document.getElementById('combinationTableBody');
+        const resultsContainer = document.getElementById('resultsContainer');
  
         const settingsOverlay = document.getElementById('settingsOverlay');
         const scriptUrlInput = document.getElementById('scriptUrlInput');
@@ -425,14 +401,16 @@
         const dbOverlay = document.getElementById('dbOverlay');
         const closeDbBtn = document.getElementById('closeDbBtn');
         const dbTableBody = document.getElementById('dbTableBody');
+        const refreshDbBtn = document.getElementById('refreshDbBtn');
         
         const toast = document.getElementById('toast');
 
         // --- KONFIGURACJA ---
         // Możesz wkleić tutaj bezpośrednio swój URL wdrożenia Google Apps Script:
-        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyIFKO8QSCK69kOJnyyM-iLfKx4Bc70bjZVvaRPrrKXsfSRBt6L_4jpIVifIuZJ8c_jHw/exec';
+        const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx66jT_-gTSnDsllyP8bCw08hJNrF282_ewtl8oVmPf4UP0aK8_iK82g1wivOET7YIb3A/exec';
 
         let currentKanji = '';
+        let cachedDb = [];
 
         // Load Settings
         scriptUrlInput.value = localStorage.getItem('gas_script_url') || (DEFAULT_SCRIPT_URL !== 'TUTAJ_WKLEJ_SWOJ_URL_WDROZENIA' ? DEFAULT_SCRIPT_URL : '');
@@ -446,27 +424,196 @@
             return '';
         }
 
+        async function loadDatabaseCache(silent = false) {
+            const scriptUrl = getScriptUrl();
+            if (!scriptUrl) return;
+
+            try {
+                const response = await fetch(scriptUrl + '?action=all');
+                const result = await response.json();
+                if (result && result.status === 'success' && Array.isArray(result.data)) {
+                    cachedDb = result.data;
+                    if (!silent) {
+                        showToast('Zsynchronizowano pamięć podręczną.');
+                    }
+                } else {
+                    console.error('Błąd pobierania bazy danych:', result ? result.message : 'brak danych');
+                    if (!silent) {
+                        showToast('Błąd synchronizacji.');
+                    }
+                }
+            } catch (err) {
+                console.error('Błąd połączenia z bazą danych:', err);
+                if (!silent) {
+                    showToast('Błąd połączenia z bazą.');
+                }
+            }
+        }
+
         // Actions
+        function extractKanji(text) {
+            const regex = /[\u4e00-\u9faf\u3400-\u4dbf]/g;
+            const matches = text.match(regex);
+            if (!matches) return [];
+            return Array.from(new Set(matches));
+        }
+
+        function updateCombinationSection(cardElement, bodyElement, extraArray) {
+            bodyElement.innerHTML = '';
+            cardElement.style.display = 'none';
+            if (!extraArray || !Array.isArray(extraArray)) return;
+            
+            let hasData = false;
+            extraArray.forEach(val => {
+                if (val && val.trim() !== '') {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.textContent = val.trim();
+                    tr.appendChild(td);
+                    bodyElement.appendChild(tr);
+                    hasData = true;
+                }
+            });
+            if (hasData) {
+                cardElement.style.display = 'block';
+            }
+        }
+
+        // Tworzenie dynamicznej karty edycji dla danego Kanji
+        function createKanjiCard(char, item) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.display = 'flex';
+            card.style.flexDirection = 'column';
+            card.style.gap = '14px';
+            
+            const displayRow = document.createElement('div');
+            displayRow.className = 'kanji-display-row';
+            
+            const kanjiLarge = document.createElement('div');
+            kanjiLarge.className = 'kanji-large';
+            kanjiLarge.textContent = char;
+            displayRow.appendChild(kanjiLarge);
+            
+            const kanjiInfo = document.createElement('div');
+            kanjiInfo.className = 'kanji-info';
+            kanjiInfo.innerHTML = `Zatwierdzony symbol: <strong>${char}</strong><br><span style="color: #64748b;">Wpisz notatkę poniżej.</span>`;
+            displayRow.appendChild(kanjiInfo);
+            
+            card.appendChild(displayRow);
+            
+            const inputGroupComment = document.createElement('div');
+            inputGroupComment.className = 'input-group';
+            const textarea = document.createElement('textarea');
+            textarea.placeholder = 'Wpisz komentarz dla tego Kanji...';
+            textarea.value = (item && item.comment) ? item.comment : '';
+            inputGroupComment.appendChild(textarea);
+            card.appendChild(inputGroupComment);
+            
+            const extraContainer = document.createElement('div');
+            extraContainer.style.marginTop = '6px';
+            extraContainer.style.marginBottom = '6px';
+            
+            const extraTitle = document.createElement('span');
+            extraTitle.className = 'card-title';
+            extraTitle.style.fontSize = '12px';
+            extraTitle.style.marginBottom = '6px';
+            extraTitle.style.display = 'block';
+            extraTitle.textContent = 'Dane kombinacji (Kolumny D-I)';
+            extraContainer.appendChild(extraTitle);
+            
+            const grid = document.createElement('div');
+            grid.style.display = 'grid';
+            grid.style.gridTemplateColumns = '1fr 1fr';
+            grid.style.gap = '8px';
+            
+            const extraInputs = [];
+            const placeholders = ['Kolumna D', 'Kolumna E', 'Kolumna F', 'Kolumna G', 'Kolumna H', 'Kolumna I'];
+            for (let i = 0; i < 6; i++) {
+                const group = document.createElement('div');
+                group.className = 'input-group';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = placeholders[i];
+                input.style.padding = '8px 10px';
+                input.style.fontSize = '14px';
+                input.value = (item && item.extra && item.extra[i]) ? item.extra[i] : '';
+                group.appendChild(input);
+                grid.appendChild(group);
+                extraInputs.push(input);
+            }
+            extraContainer.appendChild(grid);
+            card.appendChild(extraContainer);
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.innerHTML = '💾 Zapisz do Google Sheets';
+            
+            const combCard = document.createElement('div');
+            combCard.className = 'card';
+            combCard.style.marginTop = '-8px';
+            combCard.style.display = 'none';
+            
+            const combTitle = document.createElement('div');
+            combTitle.className = 'card-title';
+            combTitle.textContent = 'Kombinacja';
+            combCard.appendChild(combTitle);
+            
+            const combTable = document.createElement('table');
+            combTable.className = 'combination-table';
+            const combTableBody = document.createElement('tbody');
+            combTable.appendChild(combTableBody);
+            combCard.appendChild(combTable);
+            
+            saveBtn.addEventListener('click', async () => {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Zapisywanie...';
+                const comment = textarea.value.trim();
+                const extra = extraInputs.map(input => input.value.trim());
+                try {
+                    const resData = await saveKanji(char, comment, extra);
+                    let message = 'Zapisano w Google Sheets!';
+                    if (resData && resData.message) {
+                        message = resData.message;
+                    }
+                    showToast(message);
+                    
+                    await loadDatabaseCache(true); // aktualizacja cache
+                    updateCombinationSection(combCard, combTableBody, extra);
+                } catch (err) {
+                    alert('Wystąpił błąd podczas wysyłania: ' + err.message);
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '💾 Zapisz do Google Sheets';
+                }
+            });
+            
+            card.appendChild(saveBtn);
+            
+            updateCombinationSection(combCard, combTableBody, (item && item.extra) ? item.extra : []);
+            
+            resultsContainer.appendChild(card);
+            resultsContainer.appendChild(combCard);
+        }
+
         async function performSearch() {
             const query = kanjiInput.value.trim();
             if (!query) {
-                alert('Wpisz najpierw symbol Kanji.');
+                alert('Wpisz najpierw symbol Kanji lub słowo.');
                 return;
             }
             
-            currentKanji = query;
-            kanjiLabel.textContent = query;
-            kanjiText.textContent = query;
-            commentText.value = ''; // Wyczyszczenie pola komentarza przed nowym wyszukiwaniem
+            // Wyodrębnienie poszczególnych Kanji
+            let kanjiList = extractKanji(query);
+            if (kanjiList.length === 0) {
+                // Jeśli brak znaków Kanji w zapytaniu, traktujemy całą frazę jako jedno zapytanie
+                kanjiList.push(query);
+            }
             
-            // Czyszczenie tabeli kombinacji
-            combinationCard.style.display = 'none';
-            combinationTableBody.innerHTML = '';
-
+            resultsContainer.innerHTML = '';
+            
             const scriptUrl = getScriptUrl();
             if (!scriptUrl) {
-                // Jeśli brak skonfigurowanego URL, od razu otwieramy WaniKani
-                openWaniKani(query);
+                kanjiList.forEach(k => openWaniKani(k));
                 return;
             }
 
@@ -474,49 +621,44 @@
             searchBtn.textContent = '🔍 Szukanie w bazie...';
 
             try {
-                // Zapytanie GET do Google Apps Script
-                const url = scriptUrl + '?kanji=' + encodeURIComponent(query);
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (data && data.found) {
-                    commentText.value = data.comment || '';
-                    showToast('Znaleziono notatkę w bazie!');
+                let cacheUpdated = false;
+                
+                for (const char of kanjiList) {
+                    const foundItem = cachedDb.find(item => item.kanji.toString().trim() === char);
                     
-                    // Renderowanie tabeli kombinacji z kolumn D-I (data.extra)
-                    if (data.extra && Array.isArray(data.extra)) {
-                        let hasData = false;
-                        data.extra.forEach(val => {
-                            if (val && val.trim() !== '') {
-                                const tr = document.createElement('tr');
-                                const td = document.createElement('td');
-                                td.textContent = val.trim();
-                                tr.appendChild(td);
-                                combinationTableBody.appendChild(tr);
-                                hasData = true;
-                            }
-                        });
-                        if (hasData) {
-                            combinationCard.style.display = 'block';
+                    if (foundItem) {
+                        createKanjiCard(char, foundItem);
+                    } else {
+                        // Nie ma w bazie - autozapis do arkusza i otwarcie WK
+                        showToast(`Brak "${char}" w bazie. Dodawanie i otwieranie WK...`);
+                        try {
+                            await saveKanji(char, '', ["", "", "", "", "", ""]);
+                            cacheUpdated = true;
+                        } catch (saveErr) {
+                            console.error('Błąd autozapisu dla:', char, saveErr);
                         }
+                        openWaniKani(char);
                     }
-                } else {
-                    // Nie znaleziono w bazie. Zapisujemy automatycznie do bazy i otwieramy WaniKani
-                    showToast('Brak w bazie. Dodawanie...');
-                    try {
-                        await saveKanji(query, '');
-                        showToast('Dodano Kanji do bazy. Otwieram WaniKani...');
-                    } catch (saveErr) {
-                        console.error('Błąd podczas autozapisu:', saveErr);
-                        showToast('Błąd autozapisu. Otwieram WaniKani...');
-                    }
-                    openWaniKani(query);
                 }
+                
+                if (cacheUpdated) {
+                    await loadDatabaseCache(true);
+                    // Dorysuj brakujące karty na bazie zaktualizowanego cache
+                    kanjiList.forEach(char => {
+                        const alreadyRendered = Array.from(resultsContainer.querySelectorAll('.kanji-large'))
+                            .some(el => el.textContent === char);
+                        if (!alreadyRendered) {
+                            const foundItem = cachedDb.find(item => item.kanji.toString().trim() === char);
+                            createKanjiCard(char, foundItem);
+                        }
+                    });
+                }
+                
+                showToast('Wyszukiwanie zakończone.');
             } catch (err) {
                 console.error(err);
-                // W przypadku błędu (np. brak sieci, CORS we wdrożeniu testowym) otwieramy WaniKani
-                showToast('Błąd bazy. Otwieram WaniKani...');
-                openWaniKani(query);
+                showToast('Błąd bazy danych.');
+                kanjiList.forEach(k => openWaniKani(k));
             } finally {
                 searchBtn.disabled = false;
                 searchBtn.textContent = '🔍 Szukaj w WaniKani';
@@ -536,7 +678,7 @@
         });
 
         // Helper to save Kanji to Google Sheets
-        async function saveKanji(kanji, comment) {
+        async function saveKanji(kanji, comment, extra) {
             const scriptUrl = getScriptUrl();
             if (!scriptUrl) {
                 throw new Error('Brak skonfigurowanego URL skryptu.');
@@ -545,11 +687,12 @@
             const response = await fetch(scriptUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'text/plain' // Używamy text/plain by uniknąć problemów CORS preflight
+                    'Content-Type': 'text/plain'
                 },
                 body: JSON.stringify({
                     kanji: kanji,
-                    comment: comment
+                    comment: comment,
+                    extra: extra || ["", "", "", "", "", ""]
                 })
             });
 
@@ -561,93 +704,104 @@
             }
         }
 
-        // Submit Comment
-        submitCommentBtn.addEventListener('click', async () => {
-            const activeKanji = currentKanji || kanjiInput.value.trim();
-            if (!activeKanji) {
-                alert('Najpierw wpisz i wyszukaj symbol Kanji.');
+        // Renderowanie tabeli bazy danych z pamięci podręcznej (cachedDb)
+        function renderDbTable() {
+            dbTableBody.innerHTML = '';
+            if (!cachedDb || cachedDb.length === 0) {
+                dbTableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">Baza danych jest pusta.</td></tr>';
                 return;
             }
 
-            const comment = commentText.value.trim();
-            submitCommentBtn.disabled = true;
-            submitCommentBtn.textContent = 'Zapisywanie...';
+            cachedDb.forEach(item => {
+                const tr = document.createElement('tr');
+                
+                const tdKanji = document.createElement('td');
+                tdKanji.textContent = item.kanji;
+                tdKanji.style.fontWeight = 'bold';
+                tdKanji.style.color = 'var(--accent-color)';
+                tr.appendChild(tdKanji);
 
-            try {
-                const resData = await saveKanji(activeKanji, comment);
-                let message = 'Zapisano w Google Sheets!';
-                if (resData && resData.message) {
-                    message = resData.message;
+                const tdComment = document.createElement('td');
+                tdComment.textContent = item.comment || '';
+                tr.appendChild(tdComment);
+
+                // Kolumny D-I
+                for (let i = 0; i < 6; i++) {
+                    const tdExtra = document.createElement('td');
+                    tdExtra.textContent = (item.extra && item.extra[i]) ? item.extra[i] : '';
+                    tr.appendChild(tdExtra);
                 }
-                showToast(message);
-            } catch (err) {
-                alert('Wystąpił błąd podczas wysyłania: ' + err.message);
-            } finally {
-                submitCommentBtn.disabled = false;
-                submitCommentBtn.textContent = '💾 Zapisz do Google Sheets';
-            }
-        });
 
-        // Baza Overlay
-        dbBtn.addEventListener('click', async () => {
-            const scriptUrl = getScriptUrl();
-            if (!scriptUrl) {
-                alert('Proszę najpierw skonfigurować URL skryptu Google Sheets (kliknij ikonę zębatki w prawym górnym rogu).');
-                return;
-            }
+                // Kolumna Akcje
+                const tdActions = document.createElement('td');
+                tdActions.style.display = 'flex';
+                tdActions.style.gap = '6px';
+                tdActions.style.alignItems = 'center';
+                
+                // Przycisk WaniKani
+                const btnWK = document.createElement('button');
+                btnWK.textContent = '🔍 WK';
+                btnWK.style.padding = '4px 8px';
+                btnWK.style.fontSize = '12px';
+                btnWK.style.width = 'auto';
+                btnWK.style.background = 'var(--accent-color)';
+                btnWK.style.color = '#0f172a';
+                btnWK.addEventListener('click', () => {
+                    openWaniKani(item.kanji);
+                });
+                tdActions.appendChild(btnWK);
 
-            dbBtn.disabled = true;
-            dbBtn.textContent = '⏳ Pobieranie...';
-            dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">Ładowanie danych z bazy...</td></tr>';
+                // Przycisk Edytuj
+                const btnEdit = document.createElement('button');
+                btnEdit.textContent = '📝 Edytuj';
+                btnEdit.style.padding = '4px 8px';
+                btnEdit.style.fontSize = '12px';
+                btnEdit.style.width = 'auto';
+                btnEdit.style.background = 'rgba(255, 255, 255, 0.1)';
+                btnEdit.style.border = '1px solid var(--border-color)';
+                btnEdit.style.color = 'var(--text-color)';
+                btnEdit.addEventListener('click', () => {
+                    // Załaduj do formularza głównego (dynamicznie w resultsContainer)
+                    resultsContainer.innerHTML = '';
+                    currentKanji = item.kanji;
+                    kanjiInput.value = item.kanji;
+                    createKanjiCard(item.kanji, item);
+                    
+                    // Zamknij modal bazy danych
+                    dbOverlay.classList.remove('active');
+                });
+                tdActions.appendChild(btnEdit);
+
+                tr.appendChild(tdActions);
+
+                dbTableBody.appendChild(tr);
+            });
+        }
+
+        // Otwieranie Bazy (renderowanie natychmiast z pamięci podręcznej)
+        dbBtn.addEventListener('click', () => {
+            renderDbTable();
             dbOverlay.classList.add('active');
-
-            try {
-                const response = await fetch(scriptUrl + '?action=all');
-                const result = await response.json();
-
-                if (result && result.status === 'success' && Array.isArray(result.data)) {
-                    dbTableBody.innerHTML = '';
-                    if (result.data.length === 0) {
-                        dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">Baza danych jest pusta.</td></tr>';
-                    } else {
-                        result.data.forEach(item => {
-                            const tr = document.createElement('tr');
-                            
-                            const tdKanji = document.createElement('td');
-                            tdKanji.textContent = item.kanji;
-                            tdKanji.style.fontWeight = 'bold';
-                            tdKanji.style.color = 'var(--accent-color)';
-                            tr.appendChild(tdKanji);
-
-                            const tdComment = document.createElement('td');
-                            tdComment.textContent = item.comment || '';
-                            tr.appendChild(tdComment);
-
-                            // Kolumny D-I
-                            for (let i = 0; i < 6; i++) {
-                                const tdExtra = document.createElement('td');
-                                tdExtra.textContent = (item.extra && item.extra[i]) ? item.extra[i] : '';
-                                tr.appendChild(tdExtra);
-                            }
-
-                            dbTableBody.appendChild(tr);
-                        });
-                    }
-                } else {
-                    const errMsg = (result && result.message) ? result.message : 'Nieznany błąd. Upewnij się, że nowa wersja skryptu została wdrożona (sklonowana/zaktualizowana) jako Web App w Google Sheets.';
-                    dbTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Nie udało się pobrać danych z bazy.<br><span style="font-size: 12px; color: #94a3b8;">Powód: ${errMsg}</span></td></tr>`;
-                }
-            } catch (err) {
-                console.error(err);
-                dbTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #ef4444;">Błąd połączenia: ' + err.message + '</td></tr>';
-            } finally {
-                dbBtn.disabled = false;
-                dbBtn.textContent = '🗂️ Baza';
-            }
         });
 
         closeDbBtn.addEventListener('click', () => {
             dbOverlay.classList.remove('active');
+        });
+
+        // Ręczne odświeżenie bazy danych z poziomu modalu
+        refreshDbBtn.addEventListener('click', async () => {
+            refreshDbBtn.disabled = true;
+            refreshDbBtn.textContent = '⏳ ...';
+            dbTableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">Odświeżanie danych...</td></tr>';
+            try {
+                await loadDatabaseCache(false);
+                renderDbTable();
+            } catch (err) {
+                console.error(err);
+            } finally {
+                refreshDbBtn.disabled = false;
+                refreshDbBtn.textContent = '🔄 Odśwież';
+            }
         });
 
         // Settings Overlay
@@ -664,6 +818,8 @@
             localStorage.setItem('gas_script_url', scriptUrlInput.value.trim());
             settingsOverlay.classList.remove('active');
             alert('Zapisano URL skryptu.');
+            // Po zmianie URL odświeżamy cache
+            loadDatabaseCache(true);
         });
 
         function showToast(message) {
@@ -677,6 +833,9 @@
                 toast.classList.remove('show');
             }, 3000);
         }
+
+        // Ładowanie bazy danych do pamięci podręcznej przy starcie aplikacji
+        loadDatabaseCache(true);
     </script>
 </body>
 </html>
